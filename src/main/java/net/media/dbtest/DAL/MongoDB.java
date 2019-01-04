@@ -1,6 +1,8 @@
 package net.media.dbtest.DAL;
+import com.google.gson.Gson;
 import com.mongodb.BasicDBObject;
 import com.mongodb.MongoClient;
+import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
@@ -15,6 +17,8 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Repository;
 
+import javax.validation.Constraint;
+import java.lang.annotation.Documented;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -25,14 +29,17 @@ import static com.mongodb.client.model.Filters.eq;
 public class MongoDB implements ConfigDAO {
 
 
-    private MongoClient mongoClient = null;
-    private MongoDatabase database = null;
+    private MongoClient mongoClient ;
+
+
+    private MongoDatabase database ;
     private MongoCollection<Document> collection;
 
-    public MongoDB(String host, int  port, String database,String collection){
-        this.mongoClient =  new MongoClient(host, port);
-        this.database    =  this.mongoClient.getDatabase(database);
-        this.collection  =  this.database.getCollection(collection);
+    public MongoDB(){
+        this.mongoClient = new MongoClient("localhost" , 28017);
+        this.database = mongoClient.getDatabase("Dbtest");
+        this.collection = database.getCollection("test");
+
     }
 
     public void close(){
@@ -40,9 +47,9 @@ public class MongoDB implements ConfigDAO {
     }
 
     @Override
-    public List<Document> getAllConfig() {
+    public List<Document> getAllConfig(String database, String collection) {
         List<Document> configs = new ArrayList<>();
-        MongoCursor<Document> cur = this.collection.find().iterator();
+        MongoCursor<Document> cur = this.mongoClient.getDatabase(database).getCollection(collection).find().iterator();
         while(cur.hasNext()){
             configs.add(cur.next());
         }
@@ -50,8 +57,17 @@ public class MongoDB implements ConfigDAO {
     }
 
     @Override
-    public Document getbyId(String id) {
-        return this.collection.find( BasicDBObject.parse("{\"$_id\" :"+id+" }")).first();
+    public Document getbyId(String database, String collection,String id) {
+        return this.mongoClient.getDatabase(database).getCollection(collection).find( BasicDBObject.parse("{\"$_id\" :"+id+" }")).first();
+    }
+
+    @Override
+    public void updatePriority(ClientSession clientSession , String database, String collection,String adId, int priority) {
+        BasicDBObject newDoc = new BasicDBObject();
+        newDoc.append("$set",new BasicDBObject().append("data.priority",priority));
+        BasicDBObject query = new BasicDBObject().append("adId",adId);
+        this.mongoClient.getDatabase(database).getCollection(collection).updateOne(clientSession, query , newDoc);
+        System.out.println("Successfully Updated " + query);
     }
 
     // Getters and Setters
@@ -77,21 +93,24 @@ public class MongoDB implements ConfigDAO {
     }
 
     @Override
-    public void save(Config config) {
-
+    public void save(ClientSession clientSession , String database, String collection , Config config) {
+        Gson gson = new Gson();
+        Document doc = Document.parse(gson.toJson(config));
+        this.mongoClient.getDatabase(database).getCollection(collection).insertOne(clientSession, doc);
+        System.out.println("Saved SuccessFully");
     }
 
     @Override
-    public void save(List<Config> configs) {
+    public void save(ClientSession clientSession,String database , String collection, List<Config> configs) {
        for(Config config:configs){
-          save(config);
+          save(clientSession , database, collection, config);
        }
     }
 
     @Override
-    public List<Document> getByAdId(String adId) {
+    public List<Document> getByAdId(String database, String collection, String adId) {
         List<Document> configs = new ArrayList<>();
-        MongoCursor<Document> cur = this.collection.find( BasicDBObject.parse("{\"$adId\" :"+adId+" }")).iterator();
+        MongoCursor<Document> cur = this.mongoClient.getDatabase(database).getCollection(collection).find( BasicDBObject.parse("{\"$adId\" :"+adId+" }")).iterator();
         while(cur.hasNext()){
             configs.add(cur.next());
         }
